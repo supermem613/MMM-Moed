@@ -6,13 +6,7 @@ Module.register("MMM-Moed", {
     renderRefreshInterval: 5 * 60 * 1000,
     animationSpeed: 1000,
     calendars: [],
-    excludedEvents: [],
-    sectionLimits: {
-      today: 5,
-      tomorrow: 4,
-      week: 5,
-      later: 3
-    }
+    excludedEvents: []
   },
 
   getStyles: function () {
@@ -110,22 +104,15 @@ Module.register("MMM-Moed", {
       return wrapper;
     }
 
-    this.renderSection(wrapper, "Today", sections.today);
-    this.renderSection(wrapper, "Tomorrow", sections.tomorrow);
-    this.renderSection(wrapper, "This week", sections.week);
-    this.renderSection(wrapper, "Later", sections.later);
-
-    if (sections.hidden > 0) {
-      var more = document.createElement("div");
-      more.className = "ja-more dimmed";
-      more.textContent = `+${sections.hidden} more not shown`;
-      wrapper.appendChild(more);
-    }
+    this.renderSection(wrapper, "Today", sections.today, "today");
+    this.renderSection(wrapper, "Tomorrow", sections.tomorrow, "tomorrow");
+    this.renderSection(wrapper, "This week", sections.week, "week");
+    this.renderSection(wrapper, "Later", sections.later, "later");
 
     return wrapper;
   },
 
-  renderSection: function (wrapper, title, items) {
+  renderSection: function (wrapper, title, items, bucket) {
     if (items.length === 0) return;
 
     var header = document.createElement("div");
@@ -134,11 +121,11 @@ Module.register("MMM-Moed", {
     wrapper.appendChild(header);
 
     for (var i = 0; i < items.length; i++) {
-      wrapper.appendChild(this.renderItem(items[i]));
+      wrapper.appendChild(this.renderItem(items[i], bucket));
     }
   },
 
-  renderItem: function (item) {
+  renderItem: function (item, bucket) {
     var row = document.createElement("div");
     row.className = `ja-row ja-${item.kind}`;
     if (item.isToday) row.className += " ja-today";
@@ -158,7 +145,7 @@ Module.register("MMM-Moed", {
 
     var meta = document.createElement("div");
     meta.className = "ja-meta dimmed";
-    meta.textContent = item.meta;
+    meta.textContent = this.getDisplayMeta(item, bucket);
     body.appendChild(meta);
 
     row.appendChild(body);
@@ -173,26 +160,24 @@ Module.register("MMM-Moed", {
     return row;
   },
 
+  getDisplayMeta: function (item, bucket) {
+    if (item.meta || bucket !== "later") return item.meta;
+    return moment(item.startMs, "x").format("dddd");
+  },
+
   createSections: function () {
-    var items = this.createAgendaItems();
+    var items = this.createAgendaItems().slice(0, this.config.maximumEntries);
     var sections = {
       today: [],
       tomorrow: [],
       week: [],
       later: [],
-      total: 0,
-      hidden: 0
+      total: items.length
     };
 
     for (var i = 0; i < items.length; i++) {
       var bucket = this.getBucket(items[i]);
-      var limit = this.config.sectionLimits[bucket];
-      if (sections.total < this.config.maximumEntries && sections[bucket].length < limit) {
-        sections[bucket].push(items[i]);
-        sections.total++;
-      } else {
-        sections.hidden++;
-      }
+      sections[bucket].push(items[i]);
     }
 
     return sections;
@@ -202,6 +187,7 @@ Module.register("MMM-Moed", {
     var items = [];
     var seen = {};
     var calendars = this.getCalendarsByUrl();
+    var timingIndex = this.createTimingIndex();
     var now = moment();
     var maxDate = moment().startOf("day").add(this.config.maximumNumberOfDays, "days").endOf("day");
 
@@ -209,7 +195,7 @@ Module.register("MMM-Moed", {
       var events = this.calendarData[url];
       var calendar = calendars[url] || {};
       for (var i = 0; i < events.length; i++) {
-        var item = this.createAgendaItem(events[i], calendar, now, maxDate);
+        var item = this.createAgendaItem(events[i], calendar, now, maxDate, timingIndex);
         if (!item) continue;
 
         var dedupeKey = `${item.dayKey}:${item.kind}:${item.title.toLowerCase()}`;
@@ -231,7 +217,7 @@ Module.register("MMM-Moed", {
     return this.collapseConsecutiveItems(items);
   },
 
-  createAgendaItem: function (event, calendar, now, maxDate) {
+  createAgendaItem: function (event, calendar, now, maxDate, timingIndex) {
     var start = moment(event.startDate, "x");
     var end = moment(event.endDate, "x");
 
@@ -240,6 +226,7 @@ Module.register("MMM-Moed", {
     if (!event.fullDayEvent && end.isBefore(now)) return null;
 
     var title = this.cleanTitle(event.title);
+    if (this.isTimingTitle(title)) return null;
     if (this.isExcluded(title)) return null;
 
     var kind = this.getKind(title, calendar);
@@ -247,6 +234,7 @@ Module.register("MMM-Moed", {
     var startOfToday = moment().startOf("day");
     var isToday = start.isSame(startOfToday, "day");
     var badge = this.getBadge(title, calendar, kind);
+    var timing = this.getTimingForItem(title, start, badge, timingIndex);
 
     return {
       title: title,
@@ -260,10 +248,38 @@ Module.register("MMM-Moed", {
       rangeCount: 1,
       dayKey: start.format("YYYY-MM-DD"),
       fullDayEvent: event.fullDayEvent,
+      timing: timing,
       isToday: isToday,
       when: this.formatWhen(start, event.fullDayEvent),
-      meta: this.formatMeta(start, event.fullDayEvent, sourceLabel)
+      meta: this.formatTimingMeta(timing) || this.formatMeta(start, event.fullDayEvent, sourceLabel)
     };
+  },
+
+  createTimingIndex: function () {
+    var timingIndex = {};
+
+    for (var url in this.calendarData) {
+      var events = this.calendarData[url];
+      for (var i = 0; i < events.length; i++) {
+        var event = events[i];
+        var title = this.cleanTitle(event.title);
+        if (!this.isTimingTitle(title)) continue;
+
+        var start = moment(event.startDate, "x");
+        if (!start.isValid()) continue;
+
+        var dayKey = start.format("YYYY-MM-DD");
+        if (!timingIndex[dayKey]) timingIndex[dayKey] = {};
+
+        var lower = title.toLowerCase();
+        if (lower === "candle lighting") timingIndex[dayKey].candleLighting = start;
+        if (lower === "havdalah") timingIndex[dayKey].havdalah = start;
+        if (lower === "fast begins") timingIndex[dayKey].fastBegins = start;
+        if (lower === "fast ends") timingIndex[dayKey].fastEnds = start;
+      }
+    }
+
+    return timingIndex;
   },
 
   collapseConsecutiveItems: function (items) {
@@ -297,8 +313,10 @@ Module.register("MMM-Moed", {
     target.title = title;
     target.rangeEndMs = item.startMs;
     target.rangeCount++;
+    target.timing.end = item.timing.end || target.timing.end;
+    target.timing.fastEnds = item.timing.fastEnds || target.timing.fastEnds;
     target.when = this.formatRangeWhen(moment(target.startMs, "x"), moment(target.rangeEndMs, "x"));
-    target.meta = this.formatRangeMeta(target.rangeCount);
+    target.meta = this.formatTimingMeta(target.timing) || this.formatRangeMeta(target.rangeCount);
   },
 
   isNextDay: function (previousMs, nextMs) {
@@ -347,9 +365,33 @@ Module.register("MMM-Moed", {
     return `${start.format("MMM D")}–${end.format("MMM D")}`;
   },
 
-  formatMeta: function (start, fullDayEvent, sourceLabel) {
-    var date = fullDayEvent ? start.format("MMM D") : start.format("ddd, MMM D");
-    return `${date} · ${sourceLabel}`;
+  formatMeta: function () {
+    return "";
+  },
+
+  formatTimingMeta: function (timing) {
+    if (!timing) return "";
+
+    if (timing.fastBegins && timing.fastEnds) {
+      return `fast ${timing.fastBegins.format("h:mm A")}–${timing.fastEnds.format("h:mm A")}`;
+    }
+    if (timing.fastBegins) return `fast begins ${timing.fastBegins.format("h:mm A")}`;
+    if (timing.fastEnds) return `fast ends ${timing.fastEnds.format("h:mm A")}`;
+
+    if (timing.start && timing.end) {
+      return `starts ${this.formatTimingTime(timing.start)} · ends ${this.formatTimingTime(timing.end)}`;
+    }
+    if (timing.start) return `starts ${this.formatTimingTime(timing.start)}`;
+    if (timing.end) return `ends ${this.formatTimingTime(timing.end)}`;
+    return "";
+  },
+
+  formatTimingTime: function (time) {
+    var today = moment().startOf("day");
+    if (time.isBefore(today.clone().add(7, "days"), "day")) {
+      return time.format("ddd h:mm A");
+    }
+    return time.format("h:mm A");
   },
 
   formatRangeMeta: function (count) {
@@ -369,7 +411,7 @@ Module.register("MMM-Moed", {
       id: this.identifier,
       url: calendar.url,
       fetchInterval: calendar.fetchInterval || this.config.fetchInterval,
-      maximumEntries: calendar.maximumEntries || this.config.maximumEntries * 3,
+      maximumEntries: calendar.maximumEntries || Math.max(this.config.maximumEntries * 8, 100),
       maximumNumberOfDays: calendar.maximumNumberOfDays || this.config.maximumNumberOfDays,
       excludedEvents: calendar.excludedEvents || this.config.excludedEvents,
       auth: calendar.auth,
@@ -382,6 +424,41 @@ Module.register("MMM-Moed", {
       .replace(/\\,/g, ",")
       .replace(/\s+/g, " ")
       .trim();
+  },
+
+  isTimingTitle: function (title) {
+    var lower = title.toLowerCase();
+    return (
+      lower === "candle lighting" ||
+      lower === "havdalah" ||
+      lower === "fast begins" ||
+      lower === "fast ends"
+    );
+  },
+
+  getTimingForItem: function (title, start, badge, timingIndex) {
+    var dayKey = start.format("YYYY-MM-DD");
+    var sameDay = timingIndex[dayKey] || {};
+    var previousDay = timingIndex[start.clone().subtract(1, "day").format("YYYY-MM-DD")] || {};
+    var timing = {};
+
+    if (badge === "Erev") {
+      timing.start = sameDay.candleLighting;
+      return timing;
+    }
+
+    if (badge === "Chag") {
+      timing.start = previousDay.candleLighting || sameDay.candleLighting;
+      timing.end = sameDay.havdalah;
+      return timing;
+    }
+
+    if (badge === "Fast") {
+      timing.fastBegins = sameDay.fastBegins;
+      timing.fastEnds = sameDay.fastEnds;
+    }
+
+    return timing;
   },
 
   isExcluded: function (title) {
