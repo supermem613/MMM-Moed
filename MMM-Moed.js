@@ -118,7 +118,7 @@ Module.register("MMM-Moed", {
     if (sections.hidden > 0) {
       var more = document.createElement("div");
       more.className = "ja-more dimmed";
-      more.textContent = `+${sections.hidden} more upcoming`;
+      more.textContent = `+${sections.hidden} more not shown`;
       wrapper.appendChild(more);
     }
 
@@ -228,7 +228,7 @@ Module.register("MMM-Moed", {
       return a.title.localeCompare(b.title);
     });
 
-    return items.slice(0, this.config.maximumEntries + this.countSectionOverflowAllowance());
+    return this.collapseConsecutiveItems(items);
   },
 
   createAgendaItem: function (event, calendar, now, maxDate) {
@@ -256,11 +256,69 @@ Module.register("MMM-Moed", {
       sourceLabel: sourceLabel,
       priority: this.priorityForKind(kind),
       startMs: Number(event.startDate),
+      rangeEndMs: Number(event.startDate),
+      rangeCount: 1,
       dayKey: start.format("YYYY-MM-DD"),
+      fullDayEvent: event.fullDayEvent,
       isToday: isToday,
       when: this.formatWhen(start, event.fullDayEvent),
       meta: this.formatMeta(start, event.fullDayEvent, sourceLabel)
     };
+  },
+
+  collapseConsecutiveItems: function (items) {
+    var collapsed = [];
+    var openBySeriesKey = {};
+
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      var series = this.getCollapsibleSeries(item);
+      if (!series) {
+        collapsed.push(item);
+        continue;
+      }
+
+      var seriesKey = `${item.kind}:${item.badge}:${item.sourceLabel}:${series.key}`;
+      var openItem = openBySeriesKey[seriesKey];
+      if (openItem && this.isNextDay(openItem.rangeEndMs, item.startMs)) {
+        this.mergeConsecutiveItem(openItem, item, series.title);
+      } else {
+        item.seriesKey = seriesKey;
+        item.seriesTitle = series.title;
+        openBySeriesKey[seriesKey] = item;
+        collapsed.push(item);
+      }
+    }
+
+    return collapsed;
+  },
+
+  mergeConsecutiveItem: function (target, item, title) {
+    target.title = title;
+    target.rangeEndMs = item.startMs;
+    target.rangeCount++;
+    target.when = this.formatRangeWhen(moment(target.startMs, "x"), moment(target.rangeEndMs, "x"));
+    target.meta = this.formatRangeMeta(target.rangeCount);
+  },
+
+  isNextDay: function (previousMs, nextMs) {
+    var previous = moment(previousMs, "x").startOf("day");
+    var next = moment(nextMs, "x").startOf("day");
+    return next.diff(previous, "days") === 1;
+  },
+
+  getCollapsibleSeries: function (item) {
+    if (!item.fullDayEvent) return null;
+
+    var lower = item.title.toLowerCase();
+    var roshChodesh = lower.match(/^rosh chodesh (.+)$/);
+    if (roshChodesh) return { key: `rosh-chodesh:${roshChodesh[1]}`, title: item.title };
+    if (/^pesach (i|ii|iii|iv|v|vi|vii|viii)\b/.test(lower)) return { key: "chag:pesach", title: "Pesach" };
+    if (/^shavuos (i|ii)\b/.test(lower) || /^shavuot (i|ii)\b/.test(lower)) return { key: "chag:shavuos", title: "Shavuos" };
+    if (/^sukkos (i|ii|iii|iv|v|vi|vii)\b/.test(lower) || /^sukkot (i|ii|iii|iv|v|vi|vii)\b/.test(lower)) return { key: "chag:sukkos", title: "Sukkos" };
+    if (/^rosh hashana( \d| ii|$)/.test(lower)) return { key: "chag:rosh-hashana", title: "Rosh Hashana" };
+    if (lower.startsWith("chanukah:")) return { key: "holiday:chanukah", title: "Chanukah" };
+    return null;
   },
 
   getBucket: function (item) {
@@ -283,9 +341,19 @@ Module.register("MMM-Moed", {
     return start.format("MMM D");
   },
 
+  formatRangeWhen: function (start, end) {
+    if (start.isSame(end, "day")) return this.formatWhen(start, true);
+    if (start.isSame(end, "month")) return `${start.format("MMM D")}–${end.format("D")}`;
+    return `${start.format("MMM D")}–${end.format("MMM D")}`;
+  },
+
   formatMeta: function (start, fullDayEvent, sourceLabel) {
     var date = fullDayEvent ? start.format("MMM D") : start.format("ddd, MMM D");
     return `${date} · ${sourceLabel}`;
+  },
+
+  formatRangeMeta: function (count) {
+    return `${count} days`;
   },
 
   getCalendarsByUrl: function () {
@@ -425,14 +493,5 @@ Module.register("MMM-Moed", {
     if (kind === "jewish") return "Hebcal";
     if (kind === "personal") return "Personal";
     return "Holiday";
-  },
-
-  countSectionOverflowAllowance: function () {
-    return (
-      this.config.sectionLimits.today +
-      this.config.sectionLimits.tomorrow +
-      this.config.sectionLimits.week +
-      this.config.sectionLimits.later
-    );
   }
 });

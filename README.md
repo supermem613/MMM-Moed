@@ -38,8 +38,10 @@ MMM-Moed is a compact MagicMirror module for a curated "Today & Soon" agenda. It
 | `maximumNumberOfDays` | `45` | How far ahead to fetch and consider events. |
 | `fetchInterval` | `14400000` | How often to refresh calendar feed data. |
 | `renderRefreshInterval` | `300000` | How often to re-render without fetching data, keeping Today/Tomorrow labels fresh. Set to `0` to disable. |
-| `sectionLimits` | `{ today: 5, tomorrow: 4, week: 5, later: 3 }` | Per-section display caps before items collapse into the "+N more" footer. |
+| `sectionLimits` | `{ today: 5, tomorrow: 4, week: 5, later: 3 }` | Per-section display caps before items collapse into the "+N more not shown" footer. |
 | `calendars` | `[]` | iCal feeds. Each calendar can include `label`, `type`, `url`, and optional per-feed fetch options. |
 | `excludedEvents` | `[]` | Case-insensitive title substrings to hide. |
 
 Badges are inferred from event titles: `Chag` for major holidays, `Rosh` for Rosh Chodesh, `Erev` for erev days, `Fast` for fast days, `Israeli` for Israeli observances, and `Holiday` for US civil holidays. Minor Jewish holidays such as Purim and Tu B'Av render without a badge.
+
+Consecutive full-day rows for the same observance collapse into one range, such as `Shavuos I` and `Shavuos II` becoming `Shavuos` with a two-day range. Items hidden by `maximumEntries` or `sectionLimits` are summarized as `+N more not shown`.
