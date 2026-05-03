@@ -1,0 +1,102 @@
+.moed {
+  max-width: 420px;
+}
+
+.ja-section {
+  margin-top: 8px;
+  margin-bottom: 4px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid rgb(255 255 255 / 18%);
+  color: #fff;
+  font-variant: small-caps;
+  letter-spacing: 0.08em;
+  opacity: 0.75;
+}
+
+.moed .ja-section:first-child {
+  margin-top: 0;
+}
+
+.ja-row {
+  display: grid;
+  grid-template-columns: 4.8em minmax(0, 1fr) 4.2em;
+  gap: 8px;
+  align-items: baseline;
+  padding: 2px 0;
+  line-height: 1.2;
+}
+
+.ja-row.ja-today {
+  border-left: 2px solid #f5b041;
+  padding-left: 6px;
+}
+
+.ja-when {
+  white-space: nowrap;
+}
+
+.ja-body {
+  min-width: 0;
+}
+
+.ja-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ja-meta {
+  margin-top: 1px;
+  font-size: 80%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ja-badge {
+  justify-self: end;
+  border-radius: 4px;
+  padding: 1px 4px;
+  font-size: 70%;
+  letter-spacing: 0.05em;
+}
+
+.ja-badge-chag {
+  color: #f5b041;
+  background: rgb(245 176 65 / 12%);
+}
+
+.ja-badge-rosh {
+  color: #c7f59b;
+  background: rgb(199 245 155 / 12%);
+}
+
+.ja-badge-erev {
+  color: #f7d794;
+  background: rgb(247 215 148 / 12%);
+}
+
+.ja-badge-fast {
+  color: #d7bde2;
+  background: rgb(215 189 226 / 12%);
+}
+
+.ja-badge-holiday {
+  color: #9ecbff;
+  background: rgb(158 203 255 / 12%);
+}
+
+.ja-badge-israeli {
+  color: #85c1e9;
+  background: rgb(133 193 233 / 12%);
+}
+
+.ja-badge-personal {
+  color: #c7f59b;
+  background: rgb(199 245 155 / 12%);
+}
+
+.ja-more {
+  margin-top: 6px;
+  font-size: 85%;
+}

@@ -1,0 +1,7 @@
+{
+  "name": "mmm-moed",
+  "version": "1.0.0",
+  "description": "MagicMirror module for a compact moed agenda",
+  "main": "node_helper.js",
+  "license": "MIT"
+}
