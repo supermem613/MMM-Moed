@@ -6,7 +6,14 @@ Module.register("MMM-Moed", {
     renderRefreshInterval: 5 * 60 * 1000,
     animationSpeed: 1000,
     calendars: [],
-    excludedEvents: []
+    excludedEvents: [],
+    yahrzeits: [],
+    timeZoneId: null,
+    locationName: null,
+    latitude: null,
+    longitude: null,
+    elevation: 0,
+    yahrzeitReferenceYear: 5700
   },
 
   getStyles: function () {
@@ -22,6 +29,7 @@ Module.register("MMM-Moed", {
     moment.locale(config.language);
 
     this.calendarData = {};
+    this.yahrzeitData = [];
     this.error = null;
     this.loaded = false;
     this.renderRefreshTimer = null;
@@ -32,6 +40,7 @@ Module.register("MMM-Moed", {
       this.addCalendar(calendar);
     }
 
+    this.addYahrzeits();
     this.startRenderRefreshTimer();
   },
 
@@ -70,6 +79,10 @@ Module.register("MMM-Moed", {
       this.calendarData[payload.url] = payload.events;
       this.loaded = true;
       this.error = null;
+    } else if (notification === "MOED_YAHRZEITS") {
+      this.yahrzeitData = payload.items || [];
+      this.loaded = true;
+      this.error = null;
     } else if (notification === "MOED_ERROR") {
       this.loaded = true;
       this.error = "Calendar feed unavailable";
@@ -105,6 +118,7 @@ Module.register("MMM-Moed", {
     }
 
     this.renderSection(wrapper, "Today", sections.today, "today");
+    this.renderSection(wrapper, "Tonight", sections.tonight, "tonight");
     this.renderSection(wrapper, "Tomorrow", sections.tomorrow, "tomorrow");
     this.renderSection(wrapper, "This week", sections.week, "week");
     this.renderSection(wrapper, "Later", sections.later, "later");
@@ -169,6 +183,7 @@ Module.register("MMM-Moed", {
     var items = this.createAgendaItems().slice(0, this.config.maximumEntries);
     var sections = {
       today: [],
+      tonight: [],
       tomorrow: [],
       week: [],
       later: [],
@@ -195,15 +210,12 @@ Module.register("MMM-Moed", {
       var events = this.calendarData[url];
       var calendar = calendars[url] || {};
       for (var i = 0; i < events.length; i++) {
-        var item = this.createAgendaItem(events[i], calendar, now, maxDate, timingIndex);
-        if (!item) continue;
-
-        var dedupeKey = `${item.dayKey}:${item.kind}:${item.title.toLowerCase()}`;
-        if (seen[dedupeKey]) continue;
-
-        seen[dedupeKey] = true;
-        items.push(item);
+        this.addAgendaItem(items, seen, this.createAgendaItem(events[i], calendar, now, maxDate, timingIndex));
       }
+    }
+
+    for (var y = 0; y < this.yahrzeitData.length; y++) {
+      this.addAgendaItem(items, seen, this.createYahrzeitAgendaItem(this.yahrzeitData[y], now, maxDate));
     }
 
     items.sort(function (a, b) {
@@ -215,6 +227,16 @@ Module.register("MMM-Moed", {
     });
 
     return this.collapseConsecutiveItems(items);
+  },
+
+  addAgendaItem: function (items, seen, item) {
+    if (!item) return;
+
+    var dedupeKey = item.dedupeKey || `${item.dayKey}:${item.kind}:${item.title.toLowerCase()}`;
+    if (seen[dedupeKey]) return;
+
+    seen[dedupeKey] = true;
+    items.push(item);
   },
 
   createAgendaItem: function (event, calendar, now, maxDate, timingIndex) {
@@ -282,6 +304,86 @@ Module.register("MMM-Moed", {
     return timingIndex;
   },
 
+  createYahrzeitAgendaItem: function (yahrzeit, now, maxDate) {
+    var start = moment(yahrzeit.startMs, "x");
+    var end = moment(yahrzeit.endMs, "x");
+    var observedDate = moment(yahrzeit.observedDateMs, "x");
+    if (!start.isValid() || !end.isValid() || !observedDate.isValid()) return null;
+    if (end.isSameOrBefore(now) || start.isAfter(maxDate)) return null;
+
+    var lifecycle = this.getYahrzeitLifecycle(start, end, observedDate, now);
+    return {
+      title: yahrzeit.name,
+      kind: "yahrzeit",
+      badge: "Yahrzeit",
+      badgeClass: "yahrzeit",
+      sourceLabel: "Yahrzeit",
+      priority: this.priorityForKind("yahrzeit"),
+      startMs: start.valueOf(),
+      rangeEndMs: start.valueOf(),
+      rangeCount: 1,
+      dayKey: observedDate.format("YYYY-MM-DD"),
+      fullDayEvent: false,
+      timing: {},
+      isToday: lifecycle.isActive,
+      when: lifecycle.when,
+      meta: lifecycle.meta,
+      bucket: lifecycle.bucket,
+      dedupeKey: `yahrzeit:${yahrzeit.id}:${observedDate.format("YYYY-MM-DD")}`
+    };
+  },
+
+  getYahrzeitLifecycle: function (start, end, observedDate, now) {
+    var today = now.clone().startOf("day");
+    var startsToday = start.isSame(today, "day");
+    var observedToday = observedDate.isSame(today, "day");
+    var isActive = now.isSameOrAfter(start) && now.isBefore(end);
+
+    if (observedToday) {
+      return {
+        bucket: "today",
+        when: "Today",
+        meta: `began last night · ends ${end.format("h:mm A")}`,
+        isActive: true
+      };
+    }
+
+    if (startsToday) {
+      var startTime = start.format("h:mm A");
+      return {
+        bucket: "tonight",
+        when: "Tonight",
+        meta: isActive ? `started ${startTime} · through tomorrow` : `starts ${startTime}`,
+        isActive: isActive
+      };
+    }
+
+    if (observedDate.isSame(today.clone().add(1, "day"), "day")) {
+      return {
+        bucket: "tomorrow",
+        when: "Tomorrow",
+        meta: `starts tonight ${start.format("h:mm A")}`,
+        isActive: false
+      };
+    }
+
+    if (observedDate.isBefore(today.clone().add(7, "days"), "day")) {
+      return {
+        bucket: "week",
+        when: observedDate.format("ddd"),
+        meta: `starts ${start.format("ddd h:mm A")}`,
+        isActive: false
+      };
+    }
+
+    return {
+      bucket: "later",
+      when: observedDate.format("MMM D"),
+      meta: `starts ${start.format("ddd h:mm A")}`,
+      isActive: false
+    };
+  },
+
   collapseConsecutiveItems: function (items) {
     var collapsed = [];
     var openBySeriesKey = {};
@@ -340,6 +442,8 @@ Module.register("MMM-Moed", {
   },
 
   getBucket: function (item) {
+    if (item.bucket) return item.bucket;
+
     var start = moment(item.startMs, "x");
     var today = moment().startOf("day");
 
@@ -379,7 +483,7 @@ Module.register("MMM-Moed", {
     if (timing.fastEnds) return `fast ends ${timing.fastEnds.format("h:mm A")}`;
 
     if (timing.start && timing.end) {
-      return `starts ${this.formatTimingTime(timing.start)} · ends ${this.formatTimingTime(timing.end)}`;
+      return `${this.formatTimingTime(timing.start)} – ${this.formatTimingTime(timing.end)}`;
     }
     if (timing.start) return `starts ${this.formatTimingTime(timing.start)}`;
     if (timing.end) return `ends ${this.formatTimingTime(timing.end)}`;
@@ -387,11 +491,7 @@ Module.register("MMM-Moed", {
   },
 
   formatTimingTime: function (time) {
-    var today = moment().startOf("day");
-    if (time.isBefore(today.clone().add(7, "days"), "day")) {
-      return time.format("ddd h:mm A");
-    }
-    return time.format("h:mm A");
+    return time.format("ddd h:mm A");
   },
 
   formatRangeMeta: function (count) {
@@ -416,6 +516,22 @@ Module.register("MMM-Moed", {
       excludedEvents: calendar.excludedEvents || this.config.excludedEvents,
       auth: calendar.auth,
       selfSignedCert: calendar.selfSignedCert
+    });
+  },
+
+  addYahrzeits: function () {
+    if (!this.config.yahrzeits || this.config.yahrzeits.length === 0) return;
+
+    this.sendSocketNotification("ADD_MOED_YAHRZEITS", {
+      id: this.identifier,
+      yahrzeits: this.config.yahrzeits,
+      maximumNumberOfDays: this.config.maximumNumberOfDays,
+      timeZoneId: this.config.timeZoneId,
+      locationName: this.config.locationName,
+      latitude: this.config.latitude,
+      longitude: this.config.longitude,
+      elevation: this.config.elevation,
+      yahrzeitReferenceYear: this.config.yahrzeitReferenceYear
     });
   },
 
@@ -498,12 +614,14 @@ Module.register("MMM-Moed", {
 
   priorityForKind: function (kind) {
     if (kind === "jewish") return 1;
+    if (kind === "yahrzeit") return 2;
     if (kind === "personal") return 2;
     return 3;
   },
 
   getBadge: function (title, calendar, kind) {
     var lower = title.toLowerCase();
+    if (kind === "yahrzeit") return "Yahrzeit";
     if (lower.includes("rosh chodesh")) return "Rosh";
     if (lower.startsWith("erev ")) return "Erev";
     if (this.isFastDay(lower)) return "Fast";
@@ -562,12 +680,14 @@ Module.register("MMM-Moed", {
 
   defaultBadgeForKind: function (kind) {
     if (kind === "jewish") return "";
+    if (kind === "yahrzeit") return "Yahrzeit";
     if (kind === "personal") return "You";
     return "Holiday";
   },
 
   defaultLabelForKind: function (kind) {
     if (kind === "jewish") return "Hebcal";
+    if (kind === "yahrzeit") return "Yahrzeit";
     if (kind === "personal") return "Personal";
     return "Holiday";
   }

@@ -86,6 +86,11 @@
   background: rgb(158 203 255 / 12%);
 }
 
+.ja-badge-yahrzeit {
+  color: #f2c6de;
+  background: rgb(242 198 222 / 12%);
+}
+
 .ja-badge-israeli {
   color: #85c1e9;
   background: rgb(133 193 233 / 12%);

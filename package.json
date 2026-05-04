@@ -3,5 +3,9 @@
   "version": "1.0.0",
   "description": "MagicMirror module for a compact moed agenda",
   "main": "node_helper.js",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "@hebcal/core": "^6.3.3",
+    "moment-timezone": "^0.6.2"
+  }
 }
