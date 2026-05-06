@@ -80,6 +80,7 @@ Then add it to `config/config.js`.
 | `locationName` | `null` | Human-readable location name for yahrzeit sunset calculations. |
 | `latitude` / `longitude` | `null` | Coordinates for yahrzeit sunset calculations. Required when `yahrzeits` is non-empty. |
 | `elevation` | `0` | Elevation in meters for sunset calculations. |
+| `frameWidth` | `300` | Width of the rendered module column, in pixels. Increase to align with neighbouring modules in the same region. |
 
 ## Calendar feeds
 

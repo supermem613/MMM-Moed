@@ -1,5 +1,5 @@
 .moed {
-  max-width: 420px;
+  /* Width is driven by the frameWidth config option, applied inline. */
 }
 
 .ja-section {
@@ -100,4 +100,3 @@
   color: #c7f59b;
   background: rgb(199 245 155 / 12%);
 }
-

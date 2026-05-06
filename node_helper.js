@@ -1,7 +1,7 @@
 const NodeHelper = require("node_helper");
 const Log = require("logger");
-const CalendarFetcher = require("../default/calendar/calendarfetcher");
 const moment = require("moment-timezone");
+const CalendarFetcher = require("../default/calendar/calendarfetcher");
 
 module.exports = NodeHelper.create({
   start: function () {
@@ -83,10 +83,17 @@ module.exports = NodeHelper.create({
 
   createYahrzeitItems: async function (payload) {
     try {
-      const { HebrewCalendar, HDate, Zmanim, GeoLocation } = await this.loadHebcal();
-      const timeZoneId = payload.timeZoneId || payload.timezone || "America/New_York";
-      const now = payload.now ? moment.tz(payload.now, timeZoneId) : moment.tz(timeZoneId);
-      const maxDate = now.clone().add(payload.maximumNumberOfDays || 45, "days").endOf("day");
+      const { HebrewCalendar, HDate, Zmanim, GeoLocation } =
+        await this.loadHebcal();
+      const timeZoneId =
+        payload.timeZoneId || payload.timezone || "America/New_York";
+      const now = payload.now
+        ? moment.tz(payload.now, timeZoneId)
+        : moment.tz(timeZoneId);
+      const maxDate = now
+        .clone()
+        .add(payload.maximumNumberOfDays || 45, "days")
+        .endOf("day");
       const location = this.createGeoLocation(GeoLocation, payload, timeZoneId);
       const items = [];
 
@@ -126,7 +133,9 @@ module.exports = NodeHelper.create({
     const longitude = Number(payload.longitude);
     const elevation = Number(payload.elevation || 0);
     if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-      throw new Error("Yahrzeit location requires numeric latitude and longitude");
+      throw new Error(
+        "Yahrzeit location requires numeric latitude and longitude"
+      );
     }
 
     return new GeoLocation(
@@ -140,17 +149,40 @@ module.exports = NodeHelper.create({
 
   createYahrzeitItem: function (context) {
     const parsedDate = this.parseHebrewDate(context.yahrzeit.date);
-    const currentHebrewYear = new context.HDate(context.now.toDate()).getFullYear();
+    const currentHebrewYear = new context.HDate(
+      context.now.toDate()
+    ).getFullYear();
 
     for (let year = currentHebrewYear; year <= currentHebrewYear + 2; year++) {
-      const deathDate = new context.HDate(parsedDate.day, parsedDate.month, context.referenceYear);
-      const observedHebrewDate = context.HebrewCalendar.getYahrzeit(year, deathDate);
+      const deathDate = new context.HDate(
+        parsedDate.day,
+        parsedDate.month,
+        context.referenceYear
+      );
+      const observedHebrewDate = context.HebrewCalendar.getYahrzeit(
+        year,
+        deathDate
+      );
       if (!observedHebrewDate) continue;
 
-      const observedDate = this.createObservedDate(observedHebrewDate.greg(), context.timeZoneId);
-      const start = this.getSunset(context.Zmanim, context.location, observedDate.clone().subtract(1, "day"), context.timeZoneId);
-      const end = this.getSunset(context.Zmanim, context.location, observedDate, context.timeZoneId);
-      if (end.isSameOrBefore(context.now) || start.isAfter(context.maxDate)) continue;
+      const observedDate = this.createObservedDate(
+        observedHebrewDate.greg(),
+        context.timeZoneId
+      );
+      const start = this.getSunset(
+        context.Zmanim,
+        context.location,
+        observedDate.clone().subtract(1, "day"),
+        context.timeZoneId
+      );
+      const end = this.getSunset(
+        context.Zmanim,
+        context.location,
+        observedDate,
+        context.timeZoneId
+      );
+      if (end.isSameOrBefore(context.now) || start.isAfter(context.maxDate))
+        continue;
 
       const name = String(context.yahrzeit.name || "Yahrzeit").trim();
       const hebrewDate = context.yahrzeit.hebrewDate || context.yahrzeit.date;
@@ -182,12 +214,21 @@ module.exports = NodeHelper.create({
 
   getSunset: function (Zmanim, location, date, timeZoneId) {
     const localDate = date.clone().tz(timeZoneId);
-    const civilDate = new Date(localDate.year(), localDate.month(), localDate.date());
-    return moment.tz(new Zmanim(location, civilDate, true).sunset(), timeZoneId);
+    const civilDate = new Date(
+      localDate.year(),
+      localDate.month(),
+      localDate.date()
+    );
+    return moment.tz(
+      new Zmanim(location, civilDate, true).sunset(),
+      timeZoneId
+    );
   },
 
   parseHebrewDate: function (rawDate) {
-    const parts = String(rawDate || "").trim().split(/\s+/);
+    const parts = String(rawDate || "")
+      .trim()
+      .split(/\s+/);
     const day = Number(parts.shift());
     const rawMonth = parts.join(" ");
     const month = this.normalizeHebrewMonth(rawMonth);
