@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "MagicMirror module for a compact moed agenda",
   "main": "node_helper.js",
+  "scripts": {
+    "test": "node tests/filter.test.js"
+  },
   "license": "MIT",
   "dependencies": {
     "@hebcal/core": "^6.3.3",

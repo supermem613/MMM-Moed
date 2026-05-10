@@ -14,6 +14,7 @@ Module.register("MMM-Moed", {
     longitude: null,
     elevation: 0,
     yahrzeitReferenceYear: 5700,
+    yahrzeitRefreshInterval: 4 * 60 * 60 * 1000,
     frameWidth: 300 // px width of the rendered module column; raise to align with neighbouring modules
   },
 
@@ -34,6 +35,7 @@ Module.register("MMM-Moed", {
     this.error = null;
     this.loaded = false;
     this.renderRefreshTimer = null;
+    this.yahrzeitRefreshTimer = null;
 
     for (var i = 0; i < this.config.calendars.length; i++) {
       var calendar = this.config.calendars[i];
@@ -42,14 +44,18 @@ Module.register("MMM-Moed", {
     }
 
     this.addYahrzeits();
+    this.startYahrzeitRefreshTimer();
     this.startRenderRefreshTimer();
   },
 
   suspend: function () {
     this.stopRenderRefreshTimer();
+    this.stopYahrzeitRefreshTimer();
   },
 
   resume: function () {
+    this.addYahrzeits();
+    this.startYahrzeitRefreshTimer();
     this.startRenderRefreshTimer();
     this.updateDom(this.config.animationSpeed);
   },
@@ -71,6 +77,27 @@ Module.register("MMM-Moed", {
 
     clearInterval(this.renderRefreshTimer);
     this.renderRefreshTimer = null;
+  },
+
+  startYahrzeitRefreshTimer: function () {
+    this.stopYahrzeitRefreshTimer();
+
+    if (!this.hasYahrzeits()) return;
+
+    var interval = Number(this.config.yahrzeitRefreshInterval);
+    if (!Number.isFinite(interval) || interval <= 0) return;
+
+    var self = this;
+    this.yahrzeitRefreshTimer = setInterval(function () {
+      self.addYahrzeits();
+    }, interval);
+  },
+
+  stopYahrzeitRefreshTimer: function () {
+    if (!this.yahrzeitRefreshTimer) return;
+
+    clearInterval(this.yahrzeitRefreshTimer);
+    this.yahrzeitRefreshTimer = null;
   },
 
   socketNotificationReceived: function (notification, payload) {
@@ -265,7 +292,7 @@ Module.register("MMM-Moed", {
 
     var title = this.cleanTitle(event.title);
     if (this.isTimingTitle(title)) return null;
-    if (this.isExcluded(title)) return null;
+    if (this.isExcluded(title, calendar)) return null;
 
     var kind = this.getKind(title, calendar);
     var sourceLabel =
@@ -566,8 +593,12 @@ Module.register("MMM-Moed", {
     });
   },
 
+  hasYahrzeits: function () {
+    return this.config.yahrzeits && this.config.yahrzeits.length > 0;
+  },
+
   addYahrzeits: function () {
-    if (!this.config.yahrzeits || this.config.yahrzeits.length === 0) return;
+    if (!this.hasYahrzeits()) return;
 
     this.sendSocketNotification("ADD_MOED_YAHRZEITS", {
       id: this.identifier,
@@ -625,15 +656,35 @@ Module.register("MMM-Moed", {
     return timing;
   },
 
-  isExcluded: function (title) {
-    var lowerTitle = title.toLowerCase();
-    for (var i = 0; i < this.config.excludedEvents.length; i++) {
-      if (
-        lowerTitle.includes(String(this.config.excludedEvents[i]).toLowerCase())
+  isExcluded: function (title, calendar) {
+    var calendarFilters = calendar.excludedEvents || [];
+    return (
+      this.matchesEventFilter(title, this.config.excludedEvents) ||
+      this.matchesEventFilter(title, calendarFilters)
+    );
+  },
+
+  matchesEventFilter: function (title, filters) {
+    if (!Array.isArray(filters)) return false;
+
+    for (var i = 0; i < filters.length; i++) {
+      var entry = filters[i];
+      var filter =
+        typeof entry === "string" ? { filterBy: entry, regex: false } : entry;
+      if (!filter || !filter.filterBy) continue;
+
+      if (filter.regex) {
+        var regexFlags = filter.caseSensitive ? "" : "i";
+        if (new RegExp(filter.filterBy, regexFlags).test(title)) return true;
+      } else if (filter.caseSensitive) {
+        if (title.includes(filter.filterBy)) return true;
+      } else if (
+        title.toLowerCase().includes(String(filter.filterBy).toLowerCase())
       ) {
         return true;
       }
     }
+
     return false;
   },
 

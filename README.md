@@ -70,11 +70,12 @@ Then add it to `config/config.js`.
 | Option | Default | Description |
 | --- | --- | --- |
 | `calendars` | `[]` | iCal feeds to render. Each feed can include `label`, `type`, `url`, and optional fetch options supported by MagicMirror's default calendar fetcher. |
-| `excludedEvents` | `[]` | Case-insensitive title substrings to hide before grouping and collapsing. |
+| `excludedEvents` | `[]` | Event filters to hide before grouping and collapsing. Entries can be plain strings or objects with `filterBy`, `regex`, and optional `caseSensitive`. |
 | `fetchInterval` | `14400000` | How often to refresh calendar feed data. Defaults to 4 hours. |
 | `maximumEntries` | `8` | Maximum number of agenda rows to render across all sections after filtering and collapsing. |
 | `maximumNumberOfDays` | `45` | How far ahead to fetch and consider events. |
 | `renderRefreshInterval` | `300000` | How often to re-render without fetching data, keeping relative labels fresh. Set to `0` to disable. |
+| `yahrzeitRefreshInterval` | `14400000` | How often to recompute yahrzeits so entries roll into and out of the agenda without restarting. Set to `0` to disable. |
 | `yahrzeits` | `[]` | Optional yahrzeit entries with `name`, Hebrew `date`, and optional stable `id`. |
 | `timeZoneId` | `null` | IANA timezone for yahrzeit sunset calculations, such as `America/New_York`. |
 | `locationName` | `null` | Human-readable location name for yahrzeit sunset calculations. |
@@ -91,6 +92,23 @@ MMM-Moed accepts the same iCal-style feed URLs used by MagicMirror's default `ca
 | `url` | Required iCal URL. `webcal://` URLs are accepted. |
 | `label` | Human-readable source label used internally for classification. |
 | `type` | Optional classification hint. Use `jewish` for Hebcal/Jewish feeds and `holiday` for civil holiday feeds. |
+| `excludedEvents` | Optional filters for only this feed, using the same shape as top-level `excludedEvents`. |
+
+### Event filters
+
+Use `excludedEvents` to hide calendar rows by title before MMM-Moed groups, sorts, and truncates the agenda:
+
+```js
+excludedEvents: [
+    "Juneteenth",
+    "Christmas",
+    "Easter",
+    { filterBy: "^Rosh Chodesh", regex: true },
+    { filterBy: "Memorial Day", caseSensitive: true }
+]
+```
+
+Plain strings and object filters are case-insensitive substring matches by default. Set `regex: true` to treat `filterBy` as a regular expression, or `caseSensitive: true` when title case must match exactly.
 
 For Hebcal, use a timing-enabled feed if you want start/end subtitles. The useful pieces are:
 
@@ -179,6 +197,8 @@ Each yahrzeit appears as a normal agenda row with a `Yahrzeit` badge:
 | After sunset on the starting evening | Stays under `Tonight` with `started 7:58 PM · through tomorrow`. |
 | Observed civil day before sunset | Appears under `Today` with `began last night · ends 7:59 PM`. |
 | After sunset on the observed day | Drops from the agenda. |
+
+MMM-Moed recomputes yahrzeits at startup, resume, and every `yahrzeitRefreshInterval` milliseconds so yahrzeits can enter the configured `maximumNumberOfDays` window without a MagicMirror restart.
 
 Dates accept Hebrew month names such as `Nisan`, `Iyar`, `Sivan`, `Tammuz`, `Av`, `Elul`, `Tishrei`, `Cheshvan`, `Kislev`, `Tevet`, `Shevat`, `Adar`, `Adar I`, and `Adar II`. For legacy entries that only say `Adar`, MMM-Moed treats them as a standard non-leap Adar yahrzeit, which resolves to Adar II in leap years.
 
